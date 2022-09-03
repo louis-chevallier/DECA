@@ -21,7 +21,7 @@ from scipy.io import savemat
 import argparse
 from tqdm import tqdm
 import torch
-
+from utillc import *
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from decalib.deca import DECA
 from decalib.datasets import datasets 
@@ -43,21 +43,29 @@ def main(args):
     deca_cfg.model.use_tex = args.useTex
     deca_cfg.rasterizer_type = args.rasterizer_type
     deca_cfg.model.extract_tex = args.extractTex
+
+    EKOX(deca_cfg)
+
+
+    
     deca = DECA(config = deca_cfg, device=device)
     # for i in range(len(testdata)):
-    for i in tqdm(range(len(testdata))):
+    for i in range(len(testdata)):
         name = testdata[i]['imagename']
         images = testdata[i]['image'].to(device)[None,...]
         with torch.no_grad():
+            EKO()
             codedict = deca.encode(images)
+            EKO()
             opdict, visdict = deca.decode(codedict) #tensor
+            EKO()
             if args.render_orig:
                 tform = testdata[i]['tform'][None, ...]
                 tform = torch.inverse(tform).transpose(1,2).to(device)
                 original_image = testdata[i]['original_image'][None, ...].to(device)
                 _, orig_visdict = deca.decode(codedict, render_orig=True, original_image=original_image, tform=tform)    
                 orig_visdict['inputs'] = original_image            
-
+        EKO()
         if args.saveDepth or args.saveKpt or args.saveObj or args.saveMat or args.saveImages:
             os.makedirs(os.path.join(savefolder, name), exist_ok=True)
         # -- save results
@@ -77,6 +85,7 @@ def main(args):
             cv2.imwrite(os.path.join(savefolder, name + '_vis.jpg'), deca.visualize(visdict))
             if args.render_orig:
                 cv2.imwrite(os.path.join(savefolder, name + '_vis_original_size.jpg'), deca.visualize(orig_visdict))
+        EKO()
         if args.saveImages:
             for vis_name in ['inputs', 'rendered_images', 'albedo_images', 'shape_images', 'shape_detail_images', 'landmarks2d']:
                 if vis_name not in visdict.keys():
@@ -86,6 +95,7 @@ def main(args):
                 if args.render_orig:
                     image = util.tensor2image(orig_visdict[vis_name][0])
                     cv2.imwrite(os.path.join(savefolder, name, 'orig_' + name + '_' + vis_name +'.jpg'), util.tensor2image(orig_visdict[vis_name][0]))
+        EKO()
     print(f'-- please check the results in {savefolder}')
         
 if __name__ == '__main__':

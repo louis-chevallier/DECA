@@ -33,6 +33,10 @@ from .utils.rotation_converter import batch_euler2axis
 from .utils.tensor_cropper import transform_points
 from .datasets import datasets
 from .utils.config import cfg
+
+
+from utillc import *
+
 torch.backends.cudnn.benchmark = True
 
 class DECA(nn.Module):
@@ -45,7 +49,7 @@ class DECA(nn.Module):
         self.device = device
         self.image_size = self.cfg.dataset.image_size
         self.uv_size = self.cfg.model.uv_size
-
+        EKO()
         self._create_model(self.cfg.model)
         self._setup_renderer(self.cfg.model)
 
@@ -73,7 +77,7 @@ class DECA(nn.Module):
         self.n_cond = model_cfg.n_exp + 3 # exp + jaw pose
         self.num_list = [model_cfg.n_shape, model_cfg.n_tex, model_cfg.n_exp, model_cfg.n_pose, model_cfg.n_cam, model_cfg.n_light]
         self.param_dict = {i:model_cfg.get('n_' + i) for i in model_cfg.param_list}
-
+        EKO()
         # encoders
         self.E_flame = ResnetEncoder(outsize=self.n_param).to(self.device) 
         self.E_detail = ResnetEncoder(outsize=self.n_detail).to(self.device)
@@ -163,13 +167,14 @@ class DECA(nn.Module):
         batch_size = images.shape[0]
         
         ## decode
+        EKOT("flame")
         verts, landmarks2d, landmarks3d = self.flame(shape_params=codedict['shape'], expression_params=codedict['exp'], pose_params=codedict['pose'])
         if self.cfg.model.use_tex:
             albedo = self.flametex(codedict['tex'])
         else:
             albedo = torch.zeros([batch_size, 3, self.uv_size, self.uv_size], device=images.device) 
         landmarks3d_world = landmarks3d.clone()
-
+        EKOT("lm")
         ## projection
         landmarks2d = util.batch_orth_proj(landmarks2d, codedict['cam'])[:,:,:2]; landmarks2d[:,:,1:] = -landmarks2d[:,:,1:]#; landmarks2d = landmarks2d*self.image_size/2 + self.image_size/2
         landmarks3d = util.batch_orth_proj(landmarks3d, codedict['cam']); landmarks3d[:,:,1:] = -landmarks3d[:,:,1:] #; landmarks3d = landmarks3d*self.image_size/2 + self.image_size/2
@@ -197,6 +202,7 @@ class DECA(nn.Module):
             background = None
 
         if rendering:
+            EKOT("render")
             # ops = self.render(verts, trans_verts, albedo, codedict['light'])
             ops = self.render(verts, trans_verts, albedo, h=h, w=w, background=background)
             ## output
@@ -209,6 +215,7 @@ class DECA(nn.Module):
             opdict['albedo'] = albedo
             
         if use_detail:
+            EKOT("details")
             uv_z = self.D_detail(torch.cat([codedict['pose'][:,3:], codedict['exp'], codedict['detail']], dim=1))
             if iddict is not None:
                 uv_z = self.D_detail(torch.cat([iddict['pose'][:,3:], iddict['exp'], codedict['detail']], dim=1))
@@ -220,13 +227,14 @@ class DECA(nn.Module):
             opdict['normals'] = ops['normals']
             opdict['uv_detail_normals'] = uv_detail_normals
             opdict['displacement_map'] = uv_z+self.fixed_uv_dis[None,None,:,:]
-        
+            EKO()
         if vis_lmk:
             landmarks3d_vis = self.visofp(ops['transformed_normals'])#/self.image_size
             landmarks3d = torch.cat([landmarks3d, landmarks3d_vis], dim=2)
             opdict['landmarks3d'] = landmarks3d
 
         if return_vis:
+            EKO()
             ## render shape
             shape_images, _, grid, alpha_images = self.render.render_shape(verts, trans_verts, h=h, w=w, images=background, return_grid=True)
             detail_normal_images = F.grid_sample(uv_detail_normals, grid, align_corners=False)*alpha_images
@@ -235,6 +243,7 @@ class DECA(nn.Module):
             ## extract texture
             ## TODO: current resolution 256x256, support higher resolution, and add visibility
             uv_pverts = self.render.world2uv(trans_verts)
+            EKO()
             uv_gt = F.grid_sample(images, uv_pverts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
             if self.cfg.model.use_tex:
                 ## TODO: poisson blending should give better-looking results

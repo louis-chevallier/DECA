@@ -19,6 +19,7 @@ import numpy as np
 import pickle
 import torch.nn.functional as F
 
+from utillc import *
 from .lbs import lbs, batch_rodrigues, vertices2landmarks, rot_mat_to_euler
 
 def to_tensor(array, dtype=torch.float32):
@@ -43,9 +44,11 @@ class FLAME(nn.Module):
     def __init__(self, config):
         super(FLAME, self).__init__()
         print("creating the FLAME Decoder")
+        EKOX(config.flame_model_path)
         with open(config.flame_model_path, 'rb') as f:
             ss = pickle.load(f, encoding='latin1')
             flame_model = Struct(**ss)
+
 
         self.dtype = torch.float32
         self.register_buffer('faces_tensor', to_tensor(to_np(flame_model.f, dtype=np.int64), dtype=torch.long))
